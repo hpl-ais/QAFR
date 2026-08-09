@@ -137,10 +137,17 @@ let activeUploads: Map<string, ActiveTransfer> = new Map();
 let sharedOutboxFiles: SharedOutboxFile[] = [];
 let sseClients: Response[] = [];
 
-// Broadcast event to all connected PC SSE clients
+// Broadcast event to all connected PC SSE clients safely
 const broadcastSSE = (eventType: string, data: any) => {
-  sseClients.forEach((client) => {
-    client.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`);
+  const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients = sseClients.filter((client) => {
+    try {
+      if (client.writableEnded || client.destroyed) return false;
+      client.write(payload);
+      return true;
+    } catch (err) {
+      return false;
+    }
   });
 };
 
@@ -181,13 +188,21 @@ const getPhysicalPathForTarget = (targetPath: string, filename: string): string 
   return path.join(dir, filename);
 };
 
-// Get Public Wan Base URL
+// Get Public Wan Base URL safely
 const getWanBaseUrl = (req?: Request): string => {
   if (process.env.APP_URL) {
     return process.env.APP_URL;
   }
-  if (req) {
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
+  if (req && req.headers && req.headers.host) {
+    let protocol = 'https';
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    if (forwardedProto) {
+      protocol = Array.isArray(forwardedProto)
+        ? forwardedProto[0]
+        : forwardedProto.split(',')[0].trim();
+    } else if (req.protocol) {
+      protocol = req.protocol;
+    }
     return `${protocol}://${req.headers.host}`;
   }
   return `http://${connectionStatus.lanIp}:${PORT}`;
@@ -631,6 +646,17 @@ app.get('/api/storage/files', (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Express API Error Handler (prevents API errors from falling through to Vite HTML/405)
+app.use('/api', (err: any, req: Request, res: Response, next: any) => {
+  console.error('API Error:', err);
+  res.status(500).json({ error: err.message || 'Lỗi xử lý API' });
+});
+
+// Express API 404 Fallback (prevents unhandled /api/* requests from falling through to Vite SPA index.html)
+app.use('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: `API endpoint ${req.method} ${req.originalUrl} không tồn tại` });
 });
 
 /* ========================================================================= */
