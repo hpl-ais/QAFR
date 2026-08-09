@@ -1,0 +1,6 @@
+{
+  "name": "QR Auto-File Router",
+  "description": "Truyền file siêu tốc qua mạng cục bộ (LAN) bằng quét mã QR, tự động phân loại và lưu trữ file theo đuôi file",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
